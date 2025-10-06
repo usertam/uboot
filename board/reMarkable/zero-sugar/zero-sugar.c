@@ -25,7 +25,12 @@
 #include <asm/bootm.h>
 
 #define SNVS_REG_LPCR SNVS_BASE_ADDR + 0x38
+#define SNVS_REG_LPSR SNVS_BASE_ADDR + 0x4c
+#define SNVS_REG_LPPGDR SNVS_BASE_ADDR + 0x64
 #define SNVS_MASK_POWEROFF (BIT(5) | BIT(6))
+#define SNVS_LPSR_SPO BIT(18)  /* Set Power Off - power button pressed */
+#define SNVS_LPPGDR_CONST 0x41736166  /* Magic value to clear glitch detect */
+#define SNVS_LPSR_CLEAR 0x00000001  /* Clear status register */
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -43,6 +48,11 @@ static iomux_v3_cfg_t const wdog_pads[] = {
 static void snvs_poweroff(void)
 {
 	unsigned lpcr = readl(SNVS_REG_LPCR);
+	
+	/* Clear glitch detect to ensure proper poweroff */
+	writel(SNVS_LPPGDR_CONST, SNVS_REG_LPPGDR);
+	writel(SNVS_LPSR_CLEAR, SNVS_REG_LPSR);
+	
 	lpcr |= SNVS_MASK_POWEROFF;
 	writel(lpcr, SNVS_REG_LPCR);
 
@@ -50,6 +60,23 @@ static void snvs_poweroff(void)
 		udelay(500000);
 		printf("Should have halted!\n");
 	}
+}
+
+/*
+ * Check if power button is pressed for force shutdown
+ * Returns 1 if power button force shutdown is requested, 0 otherwise
+ */
+static int check_power_button_shutdown(void)
+{
+	unsigned lpsr = readl(SNVS_REG_LPSR);
+	
+	/* Check if SPO (Set Power Off) bit is set - indicates power button long press */
+	if (lpsr & SNVS_LPSR_SPO) {
+		printf("Power button force shutdown detected\n");
+		return 1;
+	}
+	
+	return 0;
 }
 
 int do_poweroff(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
@@ -177,6 +204,11 @@ int board_late_init(void)
 	 * since we use PMIC_PWRON to reset the board.
 	 */
 	clrsetbits_le16(&wdog->wcr, 0, 0x10);
+
+	/* Check if power button force shutdown is requested */
+	if (check_power_button_shutdown()) {
+		snvs_poweroff();
+	}
 
 	init_charger();
 	probe_serial_download_trap();
