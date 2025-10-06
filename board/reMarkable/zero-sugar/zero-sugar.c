@@ -64,6 +64,16 @@ static void snvs_poweroff(void)
 
 /*
  * Check if power button is pressed for force shutdown
+ * 
+ * The SNVS (Secure Non-Volatile Storage) module monitors the ONOFF button.
+ * When the button is held for approximately 5+ seconds, the SNVS hardware 
+ * sets the SPO (Set Power Off) bit in the LPSR register, indicating a
+ * forced shutdown request.
+ * 
+ * This function checks the SPO bit during boot. If set, it means the user
+ * held the power button during startup to force a shutdown, and we should
+ * immediately power off the system.
+ * 
  * Returns 1 if power button force shutdown is requested, 0 otherwise
  */
 static int check_power_button_shutdown(void)
